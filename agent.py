@@ -41,8 +41,9 @@ async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
 
     Responsibilities:
       ✅ Validate and normalize user input
-      ✅ Pass required fields to PatientDataAggregator.get_patient_aggregated_data()
-      ✅ Return unified ResponseSchema
+      ✅ Identify path type (ID or Name+DOB)
+      ✅ Pass only relevant fields to PatientDataAggregator.get_patient_aggregated_data()
+      ✅ Return a unified ResponseSchema
     """
 
     logger.info(f"--- hmm_get_data called (topic={topic}) ---")
@@ -50,35 +51,53 @@ async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
     # Extract state context
     state = getattr(tool_context, "state", {}) or {}
 
-    # 1️⃣ Validate input
+    # 1️⃣ Validate input using our strict validator
     valid, payload, err = validate_input(state)
     if not valid:
         logger.warning(f"Validation failed: {err}")
+        # Clear, user-friendly error guidance
+        guidance = (
+            "Input not recognized.\n\n"
+            "Please provide **one** of the following formats:\n"
+            "• Subscriber Path → `050028449/00` (9 digits + '/' + 2 digits) or `05002844900` (11 digits)\n"
+            "• Name+DOB Path → `First Last, MM-DD-YYYY` (comma required; accepts MM/DD/YYYY or YYYY-MM-DD)\n\n"
+            f"Details: {err}"
+        )
         return ResponseSchema(
             status="error",
             topic=topic,
-            data=ErrorData(message=err).dict(),
+            data=ErrorData(message=guidance).dict(),
         ).dict()
 
-    # 2️⃣ Prepare parameters for the aggregator (only the required fields)
+    # 2️⃣ Identify which path we are using (ID or Name+DOB)
     if payload["method"] == "id":
         subscriber_id = payload.get("subscriber_id")
         member_id = payload.get("member_id")
         first_name = last_name = date_of_birth = None
-        logger.info(f"Validated Path 1 (IDs): subscriber={subscriber_id}, member={member_id}")
-    else:
+        logger.info(f"Validated Path 1 (ID): subscriber_id={subscriber_id}, member_id={member_id}")
+
+    elif payload["method"] == "name_dob":
         first_name = payload.get("first_name")
         last_name = payload.get("last_name")
-        date_of_birth = payload.get("dob")
+        date_of_birth = payload.get("dob")  # normalized MM-DD-YYYY
         subscriber_id = member_id = None
         logger.info(f"Validated Path 2 (Name+DOB): {first_name} {last_name}, DOB={date_of_birth}")
 
-    # 3️⃣ Call aggregator
+    else:
+        # Unrecognized validator method — shouldn't happen
+        logger.error(f"Unexpected validation method: {payload['method']}")
+        return ResponseSchema(
+            status="error",
+            topic=topic,
+            data=ErrorData(message="Unexpected validation method.").dict(),
+        ).dict()
+
+    # 3️⃣ Call aggregator and fetch patient data
     try:
         async with HealthcareApiClient() as client:
             aggregator = PatientDataAggregator(client)
 
-            # Direct call to new simplified function
+            # New simplified aggregator — pass only relevant args
             aggregated_data = await aggregator.get_patient_aggregated_data(
                 subscriber_id=subscriber_id,
                 member_id=member_id,
@@ -87,14 +106,16 @@ async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
                 date_of_birth=date_of_birth,
             )
 
-            # Handle explicit error responses if aggregator returns them
+            # Handle explicit error responses
             if isinstance(aggregated_data, dict) and aggregated_data.get("status") == "error":
-                logger.warning(f"Aggregator returned error: {aggregated_data.get('data')}")
+                message = aggregated_data.get("data", "Unknown aggregator error")
+                candidates = aggregated_data.get("candidates")
+                logger.warning(f"Aggregator returned error: {message}")
                 return ResponseSchema(
                     status="error",
                     topic=topic,
-                    data=ErrorData(message=aggregated_data.get("data", "Unknown error")).dict(),
-                    candidates=aggregated_data.get("candidates"),
+                    data=ErrorData(message=message).dict(),
+                    candidates=candidates,
                 ).dict()
 
     except Exception as e:
@@ -105,9 +126,13 @@ async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
             data=ErrorData(message="Failed to retrieve data", detail=str(e)).dict(),
         ).dict()
 
-    # 4️⃣ Success — return the aggregated data directly
+    # 4️⃣ Success — return aggregated data directly
     logger.info(f"Returning aggregated data for topic={topic}")
-    return ResponseSchema(status="success", topic=topic, data=aggregated_data).dict()
+    return ResponseSchema(
+        status="success",
+        topic=topic,
+        data=aggregated_data,
+    ).dict()
 
 
 # -------------------------
