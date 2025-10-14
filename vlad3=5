@@ -1,0 +1,172 @@
+# tools/validator.py
+"""
+Validator for two exclusive input paths for HMM call-prep.
+
+Path A - ID:
+  - "050028449/00"  (9 digits '/' 2 digits)
+  - "05002844900"   (11 digits -> split into 9 + 2)
+
+Path B - Name+DOB (comma required):
+  - "Raja Panda, 04-22-1980"
+  - accepts MM-DD-YYYY, MM/DD/YYYY, YYYY-MM-DD
+  - normalized output DOB: MM-DD-YYYY
+
+Rules:
+ - Only one path is allowed. If both ID and Name/DOB fields are provided in the same payload -> reject.
+ - Accepts either raw string or dict. If dict includes a raw text field (text/query/message/topic) it will parse that.
+ - Returns: (True, payload, None) or (False, None, "error message")
+"""
+
+import re
+from typing import Any, Dict, Optional, Tuple
+from datetime import datetime, date
+
+IdentityResult = Tuple[bool, Optional[Dict[str, Any]], Optional[str]]
+
+# patterns
+_RE_ID_SLASH = re.compile(r'^\s*(\d{9})[\/\\](\d{2})\s*$')
+_RE_ID_11 = re.compile(r'^\s*(\d{11})\s*$')
+_RE_NAME_DOB = re.compile(r'^\s*(?P<name>.+?)\s*,\s*(?P<date>.+?)\s*$')
+_DATE_FORMATS = ["%m-%d-%Y", "%m/%d/%Y", "%Y-%m-%d"]
+
+def _safe_str(v: Any) -> str:
+    try:
+        return str(v).strip()
+    except Exception:
+        return ""
+
+def _normalize_dob(raw: str) -> Optional[str]:
+    s = _safe_str(raw)
+    if not s:
+        return None
+    parsed = None
+    for fmt in _DATE_FORMATS:
+        try:
+            parsed = datetime.strptime(s, fmt).date()
+            break
+        except Exception:
+            continue
+    if not parsed:
+        alt = s.replace('/', '-').strip()
+        for fmt in _DATE_FORMATS:
+            try:
+                parsed = datetime.strptime(alt, fmt).date()
+                break
+            except Exception:
+                continue
+    if not parsed or parsed > date.today():
+        return None
+    return parsed.strftime("%m-%d-%Y")
+
+def _split_name(fullname: str) -> Optional[tuple]:
+    s = _safe_str(fullname)
+    parts = [p for p in s.split() if p]
+    if len(parts) < 2:
+        return None
+    first = parts[0].lower()
+    last = " ".join(parts[1:]).lower()
+    return first, last
+
+def validate_input(inp: Any) -> IdentityResult:
+    """
+    Validate input and return normalized payload.
+    Ensures exactly one path (ID or Name+DOB) is used.
+    """
+    # Helper: extract text if dict
+    def extract_text(d: Dict[str, Any]) -> Optional[str]:
+        for k in ("text", "query", "message", "input", "user_message", "topic"):
+            if k in d and isinstance(d[k], str) and d[k].strip():
+                return d[k].strip()
+        return None
+
+    # If dict: check structured fields first
+    if isinstance(inp, dict):
+        subscriber = inp.get("subscriber_id") or inp.get("subscriberId") or inp.get("subscriber")
+        suffix = inp.get("suffix") or inp.get("member_suffix") or inp.get("suffix_id")
+        member = inp.get("member_id") or inp.get("memberId") or inp.get("member")
+
+        fn = inp.get("first_name") or inp.get("firstName") or inp.get("fname")
+        ln = inp.get("last_name") or inp.get("lastName") or inp.get("lname")
+        dob = inp.get("dob") or inp.get("date_of_birth") or inp.get("birthdate")
+
+        text = extract_text(inp)
+
+        # If both ID-like fields and name/dob fields exist -> reject (mixed input)
+        id_fields_present = bool((subscriber and suffix) or member)
+        name_fields_present = bool((fn and ln and dob) or (text and _RE_NAME_DOB.match(text)))
+
+        if id_fields_present and name_fields_present:
+            return False, None, "Ambiguous input: provide either subscriber/member ID OR name+d.o.b., not both."
+
+        # ID path via structured fields
+        if subscriber and suffix:
+            s_sub = _safe_str(subscriber)
+            s_suf = _safe_str(suffix)
+            if not re.fullmatch(r'\d{9}', s_sub):
+                return False, None, "subscriber_id must be exactly 9 digits."
+            if not re.fullmatch(r'\d{2}', s_suf):
+                return False, None, "member_id (suffix) must be exactly 2 digits."
+            return True, {"method":"id","subscriber_id":s_sub,"member_id":s_suf,"full_id":f"{s_sub}/{s_suf}"}, None
+
+        # ID path via combined member field
+        if member:
+            m = _safe_str(member)
+            mslash = _RE_ID_SLASH.fullmatch(m)
+            if mslash:
+                return True, {"method":"id","subscriber_id":mslash.group(1),"member_id":mslash.group(2),"full_id":f"{mslash.group(1)}/{mslash.group(2)}"}, None
+            m11 = _RE_ID_11.fullmatch(m)
+            if m11:
+                fid = m11.group(1)
+                return True, {"method":"id","subscriber_id":fid[:9],"member_id":fid[-2:],"full_id":f"{fid[:9]}/{fid[-2:]}"}, None
+            return False, None, "member_id must be '9digits/2digits' or 11-digit number."
+
+        # Name+DOB structured
+        if fn or ln or dob:
+            if not (fn and ln and dob):
+                return False, None, "Name+DOB requires first_name, last_name, and dob."
+            dob_norm = _normalize_dob(dob)
+            if not dob_norm:
+                return False, None, "DOB unparseable or in the future."
+            nm = _split_name(f"{fn} {ln}")
+            if not nm:
+                return False, None, "Name must include at least first and last name."
+            first, last = nm
+            display = f"{first.title()} {last.title()}"
+            return True, {"method":"name_dob","first_name":first,"last_name":last,"display_name":display,"dob":dob_norm}, None
+
+        # Fall back to text if present
+        if text:
+            return validate_input(text)
+
+        return False, None, "Dict input missing required fields. Provide ID or 'First Last, MM-DD-YYYY'."
+
+    # If string: try ID path first, then name+d.o.b.
+    if isinstance(inp, str):
+        s = inp.strip()
+
+        m_id = _RE_ID_SLASH.search(s)
+        if m_id:
+            return True, {"method":"id","subscriber_id":m_id.group(1),"member_id":m_id.group(2),"full_id":f"{m_id.group(1)}/{m_id.group(2)}"}, None
+
+        m11 = _RE_ID_11.search(s)
+        if m11:
+            fid = m11.group(1)
+            return True, {"method":"id","subscriber_id":fid[:9],"member_id":fid[-2:],"full_id":f"{fid[:9]}/{fid[-2:]}"}, None
+
+        conv = _RE_NAME_DOB.match(s)
+        if conv:
+            name_part = conv.group("name")
+            date_part = conv.group("date")
+            nm = _split_name(name_part)
+            if not nm:
+                return False, None, "Name must include at least first and last name."
+            dob_norm = _normalize_dob(date_part)
+            if not dob_norm:
+                return False, None, "DOB unparseable or in the future."
+            first, last = nm
+            display = f"{first.title()} {last.title()}"
+            return True, {"method":"name_dob","first_name":first,"last_name":last,"display_name":display,"dob":dob_norm}, None
+
+        return False, None, "Input not recognized. Allowed: '#########/##' or 'First Last, MM-DD-YYYY' (comma required)."
+
+    return False, None, "Unsupported input type. Provide a string or dict."
