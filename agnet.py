@@ -19,17 +19,19 @@ logger.setLevel(logging.INFO)
 # Pydantic response schemas
 # -------------------------
 class ErrorData(BaseModel):
-    """Standard structure for error payloads."""
     message: str
     detail: Optional[Any] = None
 
 
 class ResponseSchema(BaseModel):
-    """Unified agent response model."""
     status: str = Field(..., description="Either 'success' or 'error'")
-    topic: Optional[str] = Field(None, description="Topic requested by the user")
+    topic: Optional[str] = Field(None, description="Requested topic or slice")
     data: Optional[Any] = Field(None, description="Payload for success or ErrorData for errors")
     candidates: Optional[List[Any]] = Field(None, description="Optional candidate list if multiple matches")
+
+
+# Allowed topic keys (if you want to return slices)
+_ALLOWED_TOPIC_KEYS = {"demographics", "medications", "visits", "status"}
 
 
 # -------------------------
@@ -39,93 +41,82 @@ async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
     """
     Entry point for HMM call-prep.
 
-    Behavior:
-      - Extract raw user input from tool_context.state (robust keys)
-      - Validate input via tools.validator.validate_input()
-      - Branch to exactly one path:
-          * ID path: pass subscriber_id & member_id to the aggregator
-          * Name+DOB path: pass first_name, last_name, date_of_birth to the aggregator
-      - Call PatientDataAggregator.get_patient_aggregated_data(...) with only relevant fields
-      - Return ResponseSchema dict
+    Important: `topic` is NOT the user's message. It is only used to select a slice of the aggregated result.
+    User input must come from tool_context.state (text/message/query/input/user_message).
     """
     logger.info("hmm_get_data called (topic=%s)", topic)
     state = getattr(tool_context, "state", {}) or {}
 
     # -------------------------
-    # Robust raw input extraction
+    # Extract user message from state (DO NOT use the 'topic' parameter as input)
     # -------------------------
-    # Prefer explicit text/message keys; 'topic' is a fallback only because some UIs
-    # put the user's message in state['topic']. If you can standardize the UI to
-    # use 'text' or 'message', remove the 'topic' fallback.
     raw_text: Optional[str] = None
     if isinstance(state, dict):
+        # NOTE: do NOT include state.get("topic") here. topic param is separate.
         raw_text = (
             state.get("text")
             or state.get("message")
             or state.get("query")
             or state.get("input")
             or state.get("user_message")
-            or state.get("topic")  # fallback for legacy UI behavior
         )
     else:
-        raw_text = state  # state might already be a string
+        # state could already be a string
+        raw_text = state
 
-    # Normalize small issues (trim, normalize backslashes to forward slash, remove common zero-width)
+    # Normalize minor issues
     if isinstance(raw_text, str) and raw_text.strip():
         cleaned = raw_text.strip()
-        cleaned = cleaned.replace("\u200b", "").replace("\uFEFF", "")
+        cleaned = cleaned.replace("\u200b", "").replace("\uFEFF", "")  # remove zero-width/BOM
         cleaned = cleaned.replace("\\", "/")
         validator_input: Any = cleaned
     else:
-        # if no raw string, pass the whole dict for structured validation paths
+        # No raw string found — pass the structured dict so validator can check structured fields
         validator_input = state
 
     logger.debug("Validator input (repr): %r", validator_input)
 
     # -------------------------
-    # Validate input (must select exactly one path)
+    # Validate input and unpack properly
     # -------------------------
-    valid, payload, err = validate_input(validator_input)
+    valid, payload, err = validate_input(validator_input)  # <- correct unpacking
     if not valid:
         logger.warning("Validation failed: %s", err)
         guidance = (
-            "Input not recognized.\n\n"
-            "Provide ONE of the following formats:\n"
+            "Input not recognized. Provide ONE of:\n"
             "- Subscriber path: 050028449/00 (9 digits '/' 2 digits) or 05002844900 (11 digits)\n"
-            "- Name+DOB path: First Last, MM-DD-YYYY (comma required; accepts MM/DD/YYYY or YYYY-MM-DD)\n\n"
+            "- Name+DOB path: First Last, MM-DD-YYYY (comma required; MM/DD/YYYY and YYYY-MM-DD accepted)\n\n"
             f"Details: {err}"
         )
         return ResponseSchema(status="error", topic=topic, data=ErrorData(message=guidance).dict()).dict()
 
     # -------------------------
-    # Exactly-one-path branching
+    # Exactly-one-path branching based on payload['method']
     # -------------------------
-    if payload["method"] == "id":
-        # Path A: subscriber + member
+    method = payload.get("method")
+    if method == "id":
         subscriber_id = payload.get("subscriber_id")
         member_id = payload.get("member_id")
         first_name = last_name = date_of_birth = None
-        logger.info("Chosen path=ID (subscriber=%s member=%s)", subscriber_id, member_id)
+        logger.info("Path chosen: ID (subscriber=%s member=%s)", subscriber_id, member_id)
 
-    elif payload["method"] == "name_dob":
-        # Path B: name + dob
+    elif method == "name_dob":
         subscriber_id = member_id = None
         first_name = payload.get("first_name")
         last_name = payload.get("last_name")
-        date_of_birth = payload.get("dob")  # normalized by validator to MM-DD-YYYY
-        logger.info("Chosen path=Name+DOB (%s %s, %s)", first_name, last_name, date_of_birth)
+        date_of_birth = payload.get("dob")  # normalized to MM-DD-YYYY by validator
+        logger.info("Path chosen: Name+DOB (%s %s, %s)", first_name, last_name, date_of_birth)
 
     else:
-        logger.error("Validator returned unexpected method: %s", payload.get("method"))
+        logger.error("Validator returned unexpected method: %s", method)
         return ResponseSchema(status="error", topic=topic, data=ErrorData(message="Unexpected validation method").dict()).dict()
 
     # -------------------------
-    # Call aggregator with only relevant fields
+    # Call the aggregator with only the relevant fields for the chosen path
     # -------------------------
     try:
         async with HealthcareApiClient() as client:
             aggregator = PatientDataAggregator(client)
-
             aggregated = await aggregator.get_patient_aggregated_data(
                 subscriber_id=subscriber_id,
                 member_id=member_id,
@@ -134,12 +125,12 @@ async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
                 date_of_birth=date_of_birth,
             )
 
-            # Aggregator returned no match
+            # No match -> return clear error
             if aggregated is None:
-                logger.info("No patient found for provided identity")
+                logger.info("No patient found for provided identity.")
                 return ResponseSchema(status="error", topic=topic, data=ErrorData(message="No patient found for provided identity.").dict()).dict()
 
-            # Aggregator returned an error-shaped dict -> propagate
+            # Aggregator returned structured error -> propagate
             if isinstance(aggregated, dict) and aggregated.get("status") == "error":
                 message = aggregated.get("data", "Unknown aggregator error")
                 candidates = aggregated.get("candidates")
@@ -147,13 +138,18 @@ async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
                 return ResponseSchema(status="error", topic=topic, data=ErrorData(message=message).dict(), candidates=candidates).dict()
 
     except Exception as e:
-        logger.exception("Aggregator call failed: %s", e)
+        logger.exception("Aggregator call failed")
         return ResponseSchema(status="error", topic=topic, data=ErrorData(message="Failed to retrieve data", detail=str(e)).dict()).dict()
 
     # -------------------------
-    # Success: return aggregated payload
+    # If topic is a known slice key return slice, otherwise return full payload
     # -------------------------
-    logger.info("Returning aggregated payload")
+    requested_key = (topic or "").strip().lower()
+    if requested_key in _ALLOWED_TOPIC_KEYS:
+        slice_data = aggregated.get(requested_key)
+        return ResponseSchema(status="success", topic=topic, data={requested_key: slice_data}).dict()
+
+    # Default: return full aggregated payload
     return ResponseSchema(status="success", topic=topic, data=aggregated).dict()
 
 
