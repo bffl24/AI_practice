@@ -1,164 +1,200 @@
-# agent.py
 import logging
+import asyncio
 from typing import Any, Dict, Optional
 
 from google.adk.agents import Agent
 from google.adk.tools.tool_context import ToolContext
 
-from . import prompt
-from .tools.client import HealthcareApiClient
-from .tools.aggregator import PatientDataAggregator
-from .tools.validator import validate_input
+from app.api_client.client import HealthcareAPIClient
+from app.api_client.aggregator import PatientDataAggregator
+from app.api_client.validator import validate_input  # <-- your existing validator.py
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-# =============================================================================
-# Helper: extract user input safely from ADK Web state
-# =============================================================================
-def _extract_user_text(state: Any) -> Optional[str]:
+# ---------------------------------------------------------------------
+# Helper: ensure canonical user input from ADK tool_context.state
+# ---------------------------------------------------------------------
+def ensure_state_consistency(tool_context: ToolContext) -> Optional[str]:
     """
-    Safely extract the conversational user text from ADK tool_context.state.
-    Handles dict-like objects, State objects, or plain strings.
+    Extract a conversational user input string from tool_context.state.
+    This guarantees validate_input() always receives a plain string.
     """
     try:
-        # If it's a dict-like (typical ADK case)
-        if isinstance(state, dict):
-            for key in ("input", "text", "message", "query", "user_message"):
-                v = state.get(key)
-                if isinstance(v, str) and v.strip():
-                    return v.strip()
+        state = getattr(tool_context, "state", {}) or {}
+        if not isinstance(state, dict):
+            try:
+                state = dict(state.__dict__)
+            except Exception:
+                state = {"_repr": str(state)}
 
-        # Some ADK State objects act like dataclasses
-        if hasattr(state, "__dict__"):
-            for key in ("input", "text", "message"):
-                v = getattr(state, key, None)
-                if isinstance(v, str) and v.strip():
-                    return v.strip()
+        # Look for user input in common keys
+        user_text = None
+        for key in ("input", "text", "message", "query", "user_message"):
+            v = state.get(key)
+            if isinstance(v, str) and v.strip():
+                user_text = v.strip()
+                break
+            if isinstance(v, dict):
+                for sub in ("text", "user_message"):
+                    sv = v.get(sub)
+                    if isinstance(sv, str) and sv.strip():
+                        user_text = sv.strip()
+                        break
+                if user_text:
+                    break
 
-        # If it's already a clean string, just return it
-        if isinstance(state, str):
-            return state.strip()
+        # Fallback for nested "conversation" dicts
+        if not user_text:
+            conv = state.get("conversation")
+            if isinstance(conv, dict):
+                for sub in ("user_message", "text"):
+                    sv = conv.get(sub)
+                    if isinstance(sv, str) and sv.strip():
+                        user_text = sv.strip()
+                        break
 
-        # Fallback — only if str(state) looks human
-        s = str(state).strip()
-        if s and not s.startswith("<") and "object at" not in s:
-            return s
+        # Fallback for object with attributes
+        if not user_text and hasattr(tool_context, "state"):
+            st = getattr(tool_context, "state")
+            if hasattr(st, "__dict__"):
+                for attr in ("input", "text", "message", "user_message"):
+                    v = getattr(st, attr, None)
+                    if isinstance(v, str) and v.strip():
+                        user_text = v.strip()
+                        break
+                if not user_text and hasattr(st, "input"):
+                    inner = getattr(st, "input", None)
+                    if hasattr(inner, "text"):
+                        t = getattr(inner, "text", None)
+                        if isinstance(t, str) and t.strip():
+                            user_text = t.strip()
 
+        # As a last resort, use safe str()
+        if not user_text:
+            s = str(state).strip()
+            if s and not s.startswith("<") and "object at" not in s:
+                user_text = s
+
+        if user_text:
+            state["input"] = user_text
+            tool_context.state = state
+            return user_text
         return None
+
     except Exception as e:
-        logger.warning(f"Failed to parse state input: {e}")
+        logger.warning("Failed to normalize tool_context.state: %s", e)
         return None
 
 
-# =============================================================================
-# Main HMM Call Prep Agent
-# =============================================================================
+# ---------------------------------------------------------------------
+# Main agent function
+# ---------------------------------------------------------------------
 async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
     """
-    Main entrypoint for the HMM Call Prep agent.
-
-    Steps:
-      1. Extract conversational input (string) safely from tool_context.state
-      2. Validate input via validator.py
-      3. Determine route (ID or Name+DOB)
-      4. Call aggregator.get_patient_aggregated_data
-      5. Return FastAPI backend response directly
+    Gather patient data for HMM call preparation using FastAPI service.
+    Integrates validator-based input parsing for subscriber/member or Name+DOB.
     """
-    logger.info("🟢 hmm_get_data called (topic=%s)", topic)
-    state = getattr(tool_context, "state", {}) or {}
+    logger.info(f"--- Tool : hmm_get_data called with topic: {topic} ---")
 
-    # -------------------------------------------------------------------------
-    # 1️⃣ Extract user message safely
-    # -------------------------------------------------------------------------
-    user_input = _extract_user_text(state)
-
+    # -----------------------------------------------------------------
+    # 1️⃣ Normalize and extract user input
+    # -----------------------------------------------------------------
+    user_input = ensure_state_consistency(tool_context)
     if not user_input:
-        logger.warning("No valid conversational text found in tool_context.state.")
+        logger.warning("No valid conversational text found in state.")
         return {
             "status": "error",
-            "message": (
-                "No recognizable input found. Please provide either "
-                "Subscriber ID (#########/##) or 'First Last, MM-DD-YYYY'."
-            ),
+            "data": "No input detected. Please provide subscriber ID (#########/##) or 'First Last, MM-DD-YYYY'.",
+            "topic": topic,
         }
 
-    # Clean invisible chars and normalize slashes
     cleaned = user_input.replace("\u200b", "").replace("\uFEFF", "").replace("\\", "/").strip()
-    logger.info(f"💬 User Input (cleaned): {cleaned}")
+    logger.info(f"User Input (cleaned): {cleaned}")
 
-    # -------------------------------------------------------------------------
-    # 2️⃣ Validate input via validator
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------
+    # 2️⃣ Validate input via validator.py
+    # -----------------------------------------------------------------
     valid, payload, err = validate_input(cleaned)
-    logger.info("🧩 Validator => valid=%s payload=%s err=%s", valid, payload, err)
-
     if not valid:
-        logger.warning("Validation failed: %s", err)
-        return {
-            "status": "error",
-            "message": err or "Input format invalid. Use ID (#########/##) or 'First Last, MM-DD-YYYY'.",
-        }
+        logger.warning(f"Validation failed: {err}")
+        return {"status": "error", "data": err or "Invalid input format.", "topic": topic}
 
-    # -------------------------------------------------------------------------
-    # 3️⃣ Determine input path and extract relevant parameters
-    # -------------------------------------------------------------------------
+    # Extract route
     method = payload.get("method")
     if method == "id":
         subscriber_id = payload.get("subscriber_id")
         member_id = payload.get("member_id")
         first_name = last_name = date_of_birth = None
-        logger.info("✅ Path chosen: ID (subscriber=%s, member=%s)", subscriber_id, member_id)
+        logger.info(f"Validated ID path → Subscriber: {subscriber_id}, Member: {member_id}")
     elif method == "name_dob":
         subscriber_id = member_id = None
         first_name = payload.get("first_name")
         last_name = payload.get("last_name")
         date_of_birth = payload.get("dob")
-        logger.info("✅ Path chosen: Name+DOB (%s %s, DOB=%s)", first_name, last_name, date_of_birth)
+        logger.info(f"Validated Name+DOB path → {first_name} {last_name}, DOB={date_of_birth}")
     else:
-        logger.error("Validator returned unexpected method: %s", method)
-        return {"status": "error", "message": "Unexpected validation result."}
+        logger.error("Validator returned unknown method.")
+        return {"status": "error", "data": "Unexpected validation output.", "topic": topic}
 
-    # -------------------------------------------------------------------------
-    # 4️⃣ Call aggregator to fetch patient data
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------
+    # 3️⃣ Call aggregator (FAST API)
+    # -----------------------------------------------------------------
     try:
-        async with HealthcareApiClient() as client:
+        async with HealthcareAPIClient() as client:
             aggregator = PatientDataAggregator(client)
-            result = await aggregator.get_patient_aggregated_data(
+            patient_data = await aggregator.get_patient_aggregated_data(
                 subscriber_id=subscriber_id,
                 member_id=member_id,
                 first_name=first_name,
                 last_name=last_name,
                 date_of_birth=date_of_birth,
             )
-            logger.info("✅ Aggregator responded successfully.")
     except Exception as e:
-        logger.exception("Error while fetching data from backend.")
+        logger.exception("Error fetching data from PatientDataAggregator")
         return {
             "status": "error",
-            "message": "Failed to retrieve data from backend.",
-            "detail": str(e),
+            "data": f"Failed to retrieve data: {str(e)}",
+            "topic": topic,
         }
 
-    # -------------------------------------------------------------------------
-    # 5️⃣ Return backend response as-is (FastAPI already applies schema)
-    # -------------------------------------------------------------------------
-    if not result:
-        logger.warning("No data returned from aggregator for given input.")
-        return {"status": "error", "message": "No patient data found for provided input."}
+    if not patient_data:
+        return {"status": "error", "data": f"No data returned from backend.", "topic": topic}
 
-    return result
+    # -----------------------------------------------------------------
+    # 4️⃣ Extract data based on topic (if provided)
+    # -----------------------------------------------------------------
+    topic_map = {
+        "patient_info": patient_data.get("demographics"),
+        "medical_history": patient_data.get("medical_history"),
+        "recent_visits": patient_data.get("visits"),
+        "status": patient_data.get("status"),
+    }
+
+    data_for_topic = topic_map.get(topic.lower())
+    if not data_for_topic:
+        return {"status": "error", "data": f"Topic '{topic}' not found.", "topic": topic}
+
+    logger.info(f"--- Tool : hmm_get_data completed successfully for topic: {topic} ---")
+    return {"status": "success", "data": data_for_topic, "topic": topic}
 
 
-# =============================================================================
-# Register the agent
-# =============================================================================
-hmm_call_prep = Agent(
+# ---------------------------------------------------------------------
+# Agent registration
+# ---------------------------------------------------------------------
+agent = Agent(
     name="hmm_call_prep",
     model="gemini-2.0-flash",
-    description="Agent that validates conversational input and retrieves patient aggregated data for HMM call prep.",
-    instruction=prompt.CALL_PREP_AGENT_PROMPT,
+    description=(
+        "An assistant that validates input and retrieves patient aggregated data "
+        "for HMM call preparation using a FastAPI backend service."
+    ),
+    instruction="""
+        You are a helpful HMM Call Preparation agent.
+        1. If the user query relates to patient details, demographics, or medical data,
+           call the tool hmm_get_data with the specific topic.
+        2. If the user query does not match known topics, respond with 'DATA NOT AVAILABLE'.
+    """,
     tools=[hmm_get_data],
 )
