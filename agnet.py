@@ -5,9 +5,7 @@ from typing import Any, Dict, Optional
 from google.adk.agents import Agent
 from google.adk.tools.tool_context import ToolContext
 
-from app.api_client.client import HealthcareAPIClient
-from app.api_client.aggregator import PatientDataAggregator
-from app.api_client.validator import validate_input  # <-- your existing validator.py
+# <-- your existing validator.py
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -183,18 +181,10 @@ async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
 # ---------------------------------------------------------------------
 # Agent registration
 # ---------------------------------------------------------------------
-agent = Agent(
+hmm_call_prep = Agent(
     name="hmm_call_prep",
     model="gemini-2.0-flash",
-    description=(
-        "An assistant that validates input and retrieves patient aggregated data "
-        "for HMM call preparation using a FastAPI backend service."
-    ),
-    instruction="""
-        You are a helpful HMM Call Preparation agent.
-        1. If the user query relates to patient details, demographics, or medical data,
-           call the tool hmm_get_data with the specific topic.
-        2. If the user query does not match known topics, respond with 'DATA NOT AVAILABLE'.
-    """,
+    description="Validates conversational input and retrieves patient aggregated data for HMM call prep.",
+    instruction=prompt.CALL_PREP_AGENT_PROMPT,
     tools=[hmm_get_data],
 )
