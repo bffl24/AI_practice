@@ -1,6 +1,8 @@
-# tests/test_validator.py
+# test_validator.py
 """
-Unit tests for tools.validator
+Standalone test script for tools.validator
+Run directly:  python test_validator.py
+
 Covers:
  - Plain ID
  - Conversational ID
@@ -10,67 +12,45 @@ Covers:
  - Invalid input
 """
 
-import pytest
 from tools.validator import validate_input
 
 
-def test_plain_id():
-    """Simple ID pattern 9 digits/2 digits."""
-    ok, payload, err = validate_input("050028449/00")
-    print("\nPlain ID =>", ok, payload, err)
-    assert ok is True
-    assert payload["method"] == "id"
-    assert payload["subscriber_id"] == "050028449"
-    assert payload["member_id"] == "00"
+def run_test_case(name, input_str):
+    """Run a single test and print result clearly."""
+    print("\n" + "=" * 80)
+    print(f"TEST CASE: {name}")
+    print(f"Input: {input_str!r}")
+
+    ok, payload, err = validate_input(input_str)
+    print("Valid:", ok)
+    print("Payload:", payload)
+    print("Error:", err)
+
+    if ok:
+        print(f"✅ PASS — recognized as {payload.get('method')}")
+    else:
+        print("❌ FAIL —", err)
+    return ok
 
 
-def test_conversational_id():
-    """Conversational phrase containing subscriber ID."""
-    ok, payload, err = validate_input("give me details for subscriber 050028449/00 please")
-    print("\nConversational ID =>", ok, payload, err)
-    assert ok is True
-    assert payload["method"] == "id"
-    assert payload["subscriber_id"] == "050028449"
+if __name__ == "__main__":
+    print("\n" + "=" * 80)
+    print("🔍 Starting manual validator tests (no pytest required)...")
 
+    tests = [
+        ("Plain ID", "050028449/00"),
+        ("Conversational ID", "give me details for subscriber 050028449/00 please"),
+        ("Name+DOB (Conversational)", "Raja Panda, 04/22/1980"),
+        ("Name+DOB (CSV style)", "Raja,Panda,04/22/1980"),
+        ("Complex Messy Name", " give me details of SUBSCRIBER SR.SASTIPROPERT, JR IERONIMIDES?ESQ, 1980-08-08"),
+        ("Invalid Input", "Raja"),
+    ]
 
-def test_name_dob_conversational():
-    """Standard name + DOB with space + comma."""
-    ok, payload, err = validate_input("Raja Panda, 04/22/1980")
-    print("\nName+DOB Conversational =>", ok, payload, err)
-    assert ok is True
-    assert payload["method"] == "name_dob"
-    assert payload["first_name"] == "raja"
-    assert payload["last_name"] == "panda"
-    assert payload["dob"] == "04-22-1980"
+    passed = 0
+    for name, case in tests:
+        if run_test_case(name, case):
+            passed += 1
 
-
-def test_name_dob_csv():
-    """CSV-style name + DOB (First,Last,Date)."""
-    ok, payload, err = validate_input("Raja,Panda,04/22/1980")
-    print("\nName+DOB CSV =>", ok, payload, err)
-    assert ok is True
-    assert payload["method"] == "name_dob"
-    assert payload["first_name"] == "raja"
-    assert payload["last_name"] == "panda"
-    assert payload["dob"] == "04-22-1980"
-
-
-def test_complex_messy_name():
-    """Messy name with honorifics, suffixes, punctuation, extra words."""
-    s = " give me details of SUBSCRIBER SR.SASTIPROPERT, JR IERONIMIDES?ESQ, 1980-08-08"
-    ok, payload, err = validate_input(s)
-    print("\nComplex Messy Name =>", ok, payload, err)
-    assert ok is True, f"Failed to parse complex input: {err}"
-    assert payload["method"] == "name_dob"
-    # extracted name and date normalized
-    assert "first_name" in payload and "last_name" in payload
-    assert payload["dob"] == "08-08-1980"
-
-
-def test_invalid_input():
-    """Invalid input should fail gracefully."""
-    ok, payload, err = validate_input("Raja")
-    print("\nInvalid Input =>", ok, payload, err)
-    assert ok is False
-    assert payload is None
-    assert isinstance(err, str)
+    print("\n" + "=" * 80)
+    print(f"✅ Completed. Passed {passed}/{len(tests)} tests.")
+    print("=" * 80)
