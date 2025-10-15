@@ -15,61 +15,94 @@ logger.setLevel(logging.INFO)
 
 
 # =============================================================================
-# HMM Call Prep Agent
+# Helper: extract user input safely from ADK Web state
 # =============================================================================
+def _extract_user_text(state: Any) -> Optional[str]:
+    """
+    Safely extract the conversational user text from ADK tool_context.state.
+    Handles dict-like objects, State objects, or plain strings.
+    """
+    try:
+        # If it's a dict-like (typical ADK case)
+        if isinstance(state, dict):
+            for key in ("input", "text", "message", "query", "user_message"):
+                v = state.get(key)
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
 
+        # Some ADK State objects act like dataclasses
+        if hasattr(state, "__dict__"):
+            for key in ("input", "text", "message"):
+                v = getattr(state, key, None)
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
+
+        # If it's already a clean string, just return it
+        if isinstance(state, str):
+            return state.strip()
+
+        # Fallback — only if str(state) looks human
+        s = str(state).strip()
+        if s and not s.startswith("<") and "object at" not in s:
+            return s
+
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to parse state input: {e}")
+        return None
+
+
+# =============================================================================
+# Main HMM Call Prep Agent
+# =============================================================================
 async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
     """
-    Main entry point for the HMM Call Prep agent.
+    Main entrypoint for the HMM Call Prep agent.
 
-    Responsibilities:
-    - Extract conversational user input (ADK Web safe)
-    - Validate input via validator.py
-    - Identify one of two paths: ID or Name+DOB
-    - Call FastAPI aggregator (get_patient_aggregated_data)
-    - Return backend response directly (no schema wrapping)
+    Steps:
+      1. Extract conversational input (string) safely from tool_context.state
+      2. Validate input via validator.py
+      3. Determine route (ID or Name+DOB)
+      4. Call aggregator.get_patient_aggregated_data
+      5. Return FastAPI backend response directly
     """
-    logger.info("hmm_get_data called (topic=%s)", topic)
+    logger.info("🟢 hmm_get_data called (topic=%s)", topic)
     state = getattr(tool_context, "state", {}) or {}
 
     # -------------------------------------------------------------------------
-    # 1️⃣ Extract conversational input from ADK Web tool_context.state
+    # 1️⃣ Extract user message safely
     # -------------------------------------------------------------------------
-    raw_text: Optional[str] = None
-    if isinstance(state, dict):
-        for key in ("input", "text", "message", "query", "user_message"):
-            v = state.get(key)
-            if isinstance(v, str) and v.strip():
-                raw_text = v.strip()
-                break
-    else:
-        raw_text = str(state).strip() if state else None
+    user_input = _extract_user_text(state)
 
-    if not raw_text:
-        logger.warning("No conversational text found in tool_context.state.")
+    if not user_input:
+        logger.warning("No valid conversational text found in tool_context.state.")
         return {
             "status": "error",
-            "message": "No input detected. Please provide either subscriber ID (#########/##) or 'First Last, MM-DD-YYYY'."
+            "message": (
+                "No recognizable input found. Please provide either "
+                "Subscriber ID (#########/##) or 'First Last, MM-DD-YYYY'."
+            ),
         }
 
-    cleaned = raw_text.replace("\u200b", "").replace("\uFEFF", "").replace("\\", "/").strip()
-    logger.info(f"User input (cleaned): {cleaned}")
+    # Clean invisible chars and normalize slashes
+    cleaned = user_input.replace("\u200b", "").replace("\uFEFF", "").replace("\\", "/").strip()
+    logger.info(f"💬 User Input (cleaned): {cleaned}")
 
     # -------------------------------------------------------------------------
     # 2️⃣ Validate input via validator
     # -------------------------------------------------------------------------
     valid, payload, err = validate_input(cleaned)
-    logger.info("VALIDATOR OUTPUT => valid=%s payload=%s err=%s", valid, payload, err)
+    logger.info("🧩 Validator => valid=%s payload=%s err=%s", valid, payload, err)
 
     if not valid:
         logger.warning("Validation failed: %s", err)
         return {
             "status": "error",
-            "message": err or "Invalid input. Please use a valid ID or Name+DOB format."
+            "message": err or "Input format invalid. Use ID (#########/##) or 'First Last, MM-DD-YYYY'.",
         }
 
     # -------------------------------------------------------------------------
-    # 3️⃣ Determine input path and extract parameters
+    # 3️⃣ Determine input path and extract relevant parameters
     # -------------------------------------------------------------------------
     method = payload.get("method")
     if method == "id":
@@ -82,13 +115,13 @@ async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
         first_name = payload.get("first_name")
         last_name = payload.get("last_name")
         date_of_birth = payload.get("dob")
-        logger.info("✅ Path chosen: Name+DOB (%s %s, %s)", first_name, last_name, date_of_birth)
+        logger.info("✅ Path chosen: Name+DOB (%s %s, DOB=%s)", first_name, last_name, date_of_birth)
     else:
         logger.error("Validator returned unexpected method: %s", method)
-        return {"status": "error", "message": "Unexpected validation method."}
+        return {"status": "error", "message": "Unexpected validation result."}
 
     # -------------------------------------------------------------------------
-    # 4️⃣ Call the aggregator to fetch data from FastAPI backend
+    # 4️⃣ Call aggregator to fetch patient data
     # -------------------------------------------------------------------------
     try:
         async with HealthcareApiClient() as client:
@@ -100,21 +133,21 @@ async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
                 last_name=last_name,
                 date_of_birth=date_of_birth,
             )
-            logger.info("Aggregator returned response successfully.")
+            logger.info("✅ Aggregator responded successfully.")
     except Exception as e:
-        logger.exception("Error while fetching aggregated data")
+        logger.exception("Error while fetching data from backend.")
         return {
             "status": "error",
-            "message": "Backend request failed while fetching patient data.",
-            "detail": str(e)
+            "message": "Failed to retrieve data from backend.",
+            "detail": str(e),
         }
 
     # -------------------------------------------------------------------------
-    # 5️⃣ Return backend result as-is (FastAPI already structures the response)
+    # 5️⃣ Return backend response as-is (FastAPI already applies schema)
     # -------------------------------------------------------------------------
     if not result:
-        logger.warning("No data returned from aggregator for provided identity.")
-        return {"status": "error", "message": "No patient data found for the provided input."}
+        logger.warning("No data returned from aggregator for given input.")
+        return {"status": "error", "message": "No patient data found for provided input."}
 
     return result
 
@@ -122,11 +155,10 @@ async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
 # =============================================================================
 # Register the agent
 # =============================================================================
-
 hmm_call_prep = Agent(
     name="hmm_call_prep",
     model="gemini-2.0-flash",
-    description="Validates conversational input and retrieves patient aggregated data for HMM call prep.",
+    description="Agent that validates conversational input and retrieves patient aggregated data for HMM call prep.",
     instruction=prompt.CALL_PREP_AGENT_PROMPT,
     tools=[hmm_get_data],
 )
