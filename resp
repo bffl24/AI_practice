@@ -1,0 +1,61 @@
+Convert CALL_PREP_AGENT_PROMPT to XML format and enforce consistent header rendering for patient summary output
+
+we want the hmm_call_prep agent to use a well-defined XML-based instruction prompt,
+so that all patient summary outputs are consistent, readable, and maintain mandatory section headers (Contact Information, Current Situation, Medications, Encounters),
+without the model skipping headers or outputting raw JSON.
+
+Update prompt.py to replace legacy CALL_PREP_AGENT_PROMPT with the XML-based version.
+
+Validate integration with hmm_call_prep in agent.py ensuring instruction parameter reads the new prompt.
+
+Test locally with mock JSON payloads containing:
+
+Complete data
+
+Partial data (missing fields)
+
+Empty payload
+
+
+Subject: Update: XML Prompt Integration & Header Rendering Fix for hmm_call_prep Agent
+
+Hi Shamael, [Scrum Master’s Name],
+
+We’ve converted the CALL_PREP_AGENT_PROMPT to an XML-based format for the hmm_call_prep agent.
+This fixes the earlier issue where data wasn’t displayed even though API calls were successful, and ensures all patient summaries are consistent, readable, and include mandatory headers — Contact Information, Current Situation, Medications, and Encounters — without skipping or printing raw JSON.
+
+Work Done
+
+Updated prompt.py with the new XML CALL_PREP_AGENT_PROMPT.
+
+Integrated it with hmm_call_prep in agent.py.
+
+Fixed inconsistent data rendering issue during API response summarization.
+
+Tested locally with:
+
+✅ Complete data
+
+✅ Partial (missing fields)
+
+✅ Empty payload
+
+Results are consistent, complete, and JSON-free.
+
+Next Steps
+
+Validate in Non-Prod Apigee environment.
+
+Move to Prod deployment post review and sign-off.
+
+Impact:
+Resolved display inconsistency and improved reliability of summary generation for clinical users.
+
+
+
+
+story : Story Title: Fix missing data display and convert CALL_PREP_AGENT_PROMPT to XML format for consistent patient summary output
+
+Description:
+The existing hmm_call_prep agent was not displaying patient data even when API calls succeeded, and the summary output lacked consistent headers.
+This story updates the CALL_PREP_AGENT_PROMPT in prompt.py to an XML-based format, ensuring the agent correctly renders available data, maintains all mandatory headers (Contact Information, Current Situation, Medications, Encounters), and prevents raw JSON from being printed.
