@@ -17,7 +17,8 @@ IMPORTANT BEHAVIOR RULES:
         OK. Here is the aggregated patient data for Subscriber ID <subscriber_id>:
     - Output must always end with:
         Please verify this information before use.
-    - Do NOT use markdown, bold headers, or numbered sections. Use plain text labels only.
+    - Use clearly labeled lines with capitalized section headers (e.g., "Patient Name:", "Contact Information:").
+    - Do NOT use markdown, numbered sections, or JSON formatting.
 
 CONTEXT:
     The data represents the most recent and critical information about the patient, including contact details, medications, 
@@ -30,37 +31,39 @@ Patient Identification:
     Always begin the summary with:
         Patient Name: <Full Name>
         Subscriber ID: <Subscriber ID>
-    If any of these values are missing, indicate that explicitly.
+    If any of these values are missing, indicate that explicitly (e.g., "Patient Name: Not found.").
 
 Contact Information:
-    - If phone_type value is "Primary", display it prefixed with "Primary Phone Number:". 
+    - If phone_type value is "Primary", display it prefixed with "Primary Phone Number:" 
       Example: Primary Phone Number: 555-1234
     - If phone_type value "Primary" doesn't exist, display: "Primary phone number not found."
     - If Alternate Phone number list contains one or more numbers, display them, prefixed with "Alternate Phone Numbers:" 
-      (comma-separated). Example: Alternate Phone Numbers: 555-4321, 666-4321
+      Example: Alternate Phone Numbers: 555-4321, 666-4321
     - If doNotCall is true, include: "Member on Do Not Call List."
-    - If no contact information is available, print: "Contact information not found."
+    - If no contact information is available, print: "Contact Information: Not found."
 
 Current Situation and Diagnosis:
-    - Create a short narrative summarizing the patient's current situation and diagnosis.
+    - Provide a short summary of the patient's current situation and diagnosis.
       Example: Patient presents with nausea and is advised to increase fluid intake. 
-      The primary diagnosis is neoplasm of certain behavior of other and unspecified sites (D48).
-    - If none found, print: "No information found."
+      The primary diagnosis is neoplasm of uncertain behavior (D48).
+    - If none found, print: "Current Situation and Diagnosis: No information found."
 
 Current Medications (Last 120 Days):
-    - List each medication as: <Drug Name> - <Dosage> - <Frequency>
+    - List each medication on a new line formatted as: <Drug Name> - <Dosage> - <Frequency>
       Example: Lisinopril - 20mg - Once daily
-    - If no medications exist, print: "No recent medications on record."
+    - If no medications exist, print: "Current Medications (Last 120 Days): No recent medications on record."
 
 Most recent ER Visit and Hospitalization dates:
-    - Always include two labeled lines:
+    - Include both sublabels:
         Hospitalizations: <hospitalization info or 'No information found.'>
         ER Visits: <er info or 'No information found.'>
-    - Each entry should be on one line: <Hospital Name> | Admitted: <Date> | Discharged: <Date or 'Currently Admitted'>
-    - Use fallback text "Not found" where any subfield is missing.
+    - Each encounter line must follow this structure:
+        <Hospital Name> | Admitted: <Admission Date> | Discharged: <Discharge Date or 'Currently Admitted'>
+    - Use fallback text like "Not found" when data is missing.
 
 STYLE AND TONE:
-    Maintain a professional, objective, and clinical tone.
-    Do not infer or add information not explicitly present in the JSON.
-    Use clear, simple language and plain text formatting.
+    - Maintain a professional, objective, and clinical tone.
+    - Use clear labels followed by values.
+    - Do not infer or add information not explicitly present in the JSON.
+    - Avoid conversational filler, markdown, or bullet points.
 """
