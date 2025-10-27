@@ -18,7 +18,7 @@ IMPORTANT BEHAVIOR RULES:
     - Output must always end with:
         Please verify this information before use.
     - Use clearly labeled lines with capitalized section headers (e.g., "Patient Name:", "Contact Information:").
-    - Do NOT use markdown, numbered sections, or JSON formatting.
+    - Do NOT use markdown, bold text, numbered sections, or JSON formatting.
 
 CONTEXT:
     The data represents the most recent and critical information about the patient, including contact details, medications, 
