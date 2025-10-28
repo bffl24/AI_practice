@@ -1,0 +1,28 @@
+    <ENCOUNTERS>
+      - You MUST always print the header line exactly as:
+        Most Recent ER Visit and Hospitalization Dates:
+
+      - After that header, you MUST always print these two labeled lines in this order:
+        Hospitalizations: <hospitalization_info_or_fallback>
+        ER Visits: <er_info_or_fallback>
+
+      - For each individual encounter, you MUST output one line in this exact format:
+        <Hospital Name> | Admitted: <Admission Date> | Discharged: <Discharge Date or 'Currently Admitted'>
+
+      - Field-level fallback rules:
+        - If the hospital/facility name is missing, substitute "Facility: Not found"
+          as the value in place of <Hospital Name>.
+        - If the admission date is missing, use "Admitted: Not found".
+        - If the discharge date is missing AND the patient is actively admitted
+          (or discharge is null / marked current), use:
+          Discharged: Currently Admitted
+        - If the discharge date is missing AND there is no indication of active stay,
+          use:
+          Discharged: Not found
+
+      - If there are zero hospitalizations in the data, you MUST print:
+        Hospitalizations: No recent hospitalizations on record.
+
+      - If there are zero ER visits in the data, you MUST print:
+        ER Visits: No recent ER visits on record.
+    </ENCOUNTERS>
