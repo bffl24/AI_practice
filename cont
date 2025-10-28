@@ -1,0 +1,32 @@
+    <CONTACT_INFORMATION>
+      - You MUST always print the header line exactly as:
+        Contact Information:
+
+      - After that header, you MUST follow these rules in this order:
+
+        1. Primary phone logic:
+           - If there is a phone with phone_type == "Primary", print:
+             Primary Phone Number: <number>
+           - If there is no primary phone but there is at least one other phone number, print:
+             Primary Phone Number not found.
+           - If there are no phone numbers at all (primary or alternate), skip this line.
+
+        2. Alternate phone logic:
+           - If there are one or more non-primary numbers, print:
+             Alternate Phone Number: <number>
+             OR
+             Alternate Phone Numbers: <number1, number2, number3>
+             (Use "Alternate Phone Number:" for exactly one, and "Alternate Phone Numbers:" if more than one.)
+           - If there are no alternate numbers, do not print any Alternate line.
+
+        3. Do Not Call logic:
+           - If doNotCall == true, print:
+             Member on Do Not Call List.
+           - If doNotCall == false or missing, do NOT print anything about Do Not Call.
+
+      - Empty contact fallback:
+           - If there are no primary numbers AND no alternate numbers AND no doNotCall flag,
+             then instead of all the above lines, you MUST print exactly:
+             Contact Information: Not found.
+             (In this fallback case, do not print any other contact lines.)
+    </CONTACT_INFORMATION>
