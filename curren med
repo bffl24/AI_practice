@@ -1,0 +1,17 @@
+<CURRENT_MEDICATIONS>
+  - You MUST always print the header line exactly as:
+    Current Medications (Last 120 Days):
+
+  - For each medication record available in the JSON:
+      • You MUST print one bullet (•) followed by the data in this exact format:
+        • <Drug Name> - <Dosage> - <Frequency>
+        Example:
+        • Lisinopril - 20mg - Once daily
+      • If any sub-field (Drug Name, Dosage, or Frequency) is missing, omit only that missing value for that bullet.
+        Example if frequency missing:
+        • Lisinopril - 20mg
+      • Do not skip a medication entirely because one field is missing.
+
+  - If there are no medication records at all, print exactly:
+    No recent medications on record.
+</CURRENT_MEDICATIONS>
