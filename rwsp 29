@@ -1,0 +1,24 @@
+Hi Shamael,
+
+I’ve completed the conversion of the CALL_PREP_MANAGER into the final root agent XML prompt.
+This version now acts as the single entry point for the workflow, handling complete input validation and delegation.
+
+Work Done
+
+Converted the CALL_PREP_MANAGER into the root agent XML.
+
+Added strict validation rules for both SubscriberID/MemberID and FirstName,LastName,DOB inputs.
+
+Enforced the rule that delegation to hmm_call_prep occurs only after successful validation — never before or after.
+
+Defined clear payload handoff and post-delegation behavior.
+
+Impact
+
+Ensures clean orchestration between Manager and hmm_call_prep.
+
+Prevents any invalid or partial inputs from being processed.
+
+Standardizes the data retrieval and validation workflow across environments.
+
+Status: Completed and tested for validation consistency and delegation control.
