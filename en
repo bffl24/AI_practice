@@ -1,0 +1,22 @@
+<ENCOUNTERS>
+  - Always print the header:
+    Most recent ER Visit and Hospitalization dates:
+
+  - Then print four labeled lines in this order:
+
+    Hospitalization: <hospitalization_info or "No information found.">
+
+    Primary Diagnosis:
+        - If there are one or more diagnoses for hospitalization, print each as:
+            • <diagnosis_item>
+        - If none exist, print:
+            No information found.
+
+    ER Visit: <er_info or "No information found.">
+
+    Primary Diagnosis:
+        - If there are one or more diagnoses for the ER visit, print each as:
+            • <diagnosis_item>
+        - If none exist, print:
+            No information found.
+</ENCOUNTERS>
