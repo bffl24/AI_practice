@@ -1,51 +1,40 @@
 <OUTPUT_FORMAT>
-  <INSTRUCTIONS>
-    - Return output inside ONE fenced Markdown code block using ```text
-    - Enforce strict vertical layout (one label per line).
-    - Never merge multiple fields on the same line.
-    - Preserve blank lines and indentation exactly as shown.
-    - Do not add commentary, bullets, emojis, or tables.
-    - Diagnosis must always be list-view (code and description on separate lines).
-  </INSTRUCTIONS>
+- Output MUST be inside a single Markdown code block using ```text
+- Use one field per line. Never merge labels.
+- Preserve line breaks and indentation exactly.
+- Diagnosis must always be list-view (code and description on separate lines).
 
-  <NULL_HANDLING>
-    - current_situation_and_diagnosis null → "No current status and diagnosis information found."
-    - pharmacy empty → "CVS: No recent medications on record."
-    - mhkpharmacy empty → "MHK: Self Reporting: No recent self reported medications on record."
-    - ADT phones empty → "ADT: No phone numbers on record."
-  </NULL_HANDLING>
-
-  <TEMPLATE>
+<TEMPLATE>
 ```text
-Here is the aggregated Member data for Subscriber ID &lt;subscriber_id&gt;:
+Here is the aggregated Member data for Subscriber ID <subscriber_id>:
 
-Member Name: &lt;first_name&gt; &lt;last_name&gt;
-Member Date of Birth: &lt;birth_date&gt;
-Member Age: &lt;age&gt;
-Subscriber ID: &lt;subscriber_id&gt;
+Member Name: <first_name> <last_name>
+Member Date of Birth: <birth_date>
+Member Age: <age>
+Subscriber ID: <subscriber_id>
 
 Contact Information:
 ADT:
-        &lt;adt_phone_1&gt;
-        &lt;adt_phone_2&gt;
+        <adt_phone_1>
+        <adt_phone_2>
 
 Current Situation and Diagnosis:
-&lt;current_situation_text&gt;
+<current_situation_text>
 
 Current Medications (Last 120 Days):
-CVS: &lt;cvs_text&gt;
-MHK: Self Reporting: &lt;mhk_text&gt;
+CVS: <cvs_text>
+MHK: Self Reporting: <mhk_text>
 
 Most recent ER Visit and Hospitalization dates:
-        Hospitalization: &lt;hosp_start_date&gt; - &lt;hosp_end_date&gt;
-        Provider: &lt;hosp_provider&gt;
-        Primary Diagnosis Code: &lt;hosp_dx_code&gt; ICD-10
-        Primary Diagnosis Code Description: &lt;hosp_dx_desc&gt;
+        Hospitalization: <hosp_start_date> - <hosp_end_date>
+        Provider: <hosp_provider>
+        Primary Diagnosis Code: <hosp_dx_code> ICD-10
+        Primary Diagnosis Code Description: <hosp_dx_desc>
 
-        ER Visit: &lt;er_start_date&gt; - &lt;er_end_date&gt;
-        Provider: &lt;er_provider&gt;
-        Primary Diagnosis Code: &lt;er_dx_code&gt; ICD-10
-        Primary Diagnosis Code Description: &lt;er_dx_desc&gt;
+        ER Visit: <er_start_date> - <er_end_date>
+        Provider: <er_provider>
+        Primary Diagnosis Code: <er_dx_code> ICD-10
+        Primary Diagnosis Code Description: <er_dx_desc>
 
 Caution : Please verify this information before use.
 </TEMPLATE> </OUTPUT_FORMAT> ```
