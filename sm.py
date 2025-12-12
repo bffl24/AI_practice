@@ -1,85 +1,51 @@
 <OUTPUT_FORMAT>
-INSTRUCTION:
-- Output MUST match the TEMPLATE structure exactly.
-- Use STRICT VERTICAL LIST formatting (one field per line).
-- NEVER combine multiple labeled fields on one line.
-- Use EXACT blank lines (double newlines) between major sections, exactly as shown.
-- Do NOT add extra headers, emojis, tables, or commentary.
-- Do NOT reorder sections.
+  <INSTRUCTIONS>
+    - Return output inside ONE fenced Markdown code block using ```text
+    - Enforce strict vertical layout (one label per line).
+    - Never merge multiple fields on the same line.
+    - Preserve blank lines and indentation exactly as shown.
+    - Do not add commentary, bullets, emojis, or tables.
+    - Diagnosis must always be list-view (code and description on separate lines).
+  </INSTRUCTIONS>
 
-GENERAL RULES:
-- If a value is missing/null/empty, print the label and the exact "not found" message specified in the TEMPLATE.
-- Keep labels EXACT (capitalization and punctuation).
-- Keep spacing EXACT:
-  - There is ONE blank line between section blocks (double newline).
-  - Under "Contact Information:", print the source line (e.g., "ADT:") and then each phone on its own line with the exact indentation shown.
-- Phone formatting:
-  - Use the strings as already present in JSON (do NOT reformat numbers).
-  - If multiple phones exist, print each on its own line.
-- Diagnoses formatting:
-  - ALWAYS print Primary Diagnosis as a LIST VIEW (each item on its own line).
-  - Even if there is only one diagnosis, it must still appear as list lines (not a paragraph).
+  <NULL_HANDLING>
+    - current_situation_and_diagnosis null → "No current status and diagnosis information found."
+    - pharmacy empty → "CVS: No recent medications on record."
+    - mhkpharmacy empty → "MHK: Self Reporting: No recent self reported medications on record."
+    - ADT phones empty → "ADT: No phone numbers on record."
+  </NULL_HANDLING>
 
-SOURCE MAPPING (from loader.json):
-- subscriber_id = demographics.subscriberId
-- first_name = demographics.firstName
-- last_name = demographics.lastName
-- birth_date = demographics.birthDate
-- age = demographics.age
-- Contact phones:
-  - ADT phones = demographics.phoneNumbers[0].adt (array)
-- Current Situation and Diagnosis:
-  - current_situation_and_diagnosis:
-    - If null/empty => "No current status and diagnosis information found."
-- Medications (Last 120 Days):
-  - CVS meds = medical_visits.pharmacy (array)
-  - MHK self-report meds = medical_visits.mhkpharmacy (array)
-  - If empty => print exactly:
-    - "CVS: No recent medications on record."
-    - "MHK: Self Reporting: No recent self reported medications on record."
-- Most recent visits:
-  - Hospitalization = medical_visits.hospitalization
-  - ER visit = medical_visits.emergency
-  - If an encounter object is missing/null => print that block with "No recent <type> visits on record."
+  <TEMPLATE>
+```text
+Here is the aggregated Member data for Subscriber ID &lt;subscriber_id&gt;:
 
-DIAGNOSIS LIST VIEW REQUIREMENT (CRITICAL):
-- For BOTH Hospitalization and ER Visit:
-  - Print diagnoses as list lines, each on its own line, like:
-    Primary Diagnosis Code: <code> ICD-10
-    Primary Diagnosis Code Description: <description>
-  - If multiple diagnoses exist, repeat those two lines for each diagnosis (still one line per item; no paragraphs).
+Member Name: &lt;first_name&gt; &lt;last_name&gt;
+Member Date of Birth: &lt;birth_date&gt;
+Member Age: &lt;age&gt;
+Subscriber ID: &lt;subscriber_id&gt;
 
-<TEMPLATE>
-Here is the aggregated Member data for Subscriber ID <subscriber_id>:
-
-**Member Name**: <first_name> <last_name>
-**Member Date of Birth**: <birth_date>
-**Member Age**: <age>
-**Subscriber ID**: <subscriber_id>
-
-**Contact Information:**
+Contact Information:
 ADT:
-        <phone_1>
-        <phone_2>
+        &lt;adt_phone_1&gt;
+        &lt;adt_phone_2&gt;
 
-**Current Situation and Diagnosis:**
-<current_situation_or_not_found>
+Current Situation and Diagnosis:
+&lt;current_situation_text&gt;
 
-**Current Medications (Last 120 Days):**
-CVS: <cvs_meds_or_no_records>
-MHK: Self Reporting: <mhk_meds_or_no_records>
+Current Medications (Last 120 Days):
+CVS: &lt;cvs_text&gt;
+MHK: Self Reporting: &lt;mhk_text&gt;
 
-**Most recent ER Visit and Hospitalization dates:**
-        **Hospitalization:** <hosp_start_date> - <hosp_end_date>
-        **Provider:** <hosp_provider>
-        Primary Diagnosis Code: <hosp_dx_code_1> ICD-10
-        Primary Diagnosis Code Description: <hosp_dx_desc_1>
+Most recent ER Visit and Hospitalization dates:
+        Hospitalization: &lt;hosp_start_date&gt; - &lt;hosp_end_date&gt;
+        Provider: &lt;hosp_provider&gt;
+        Primary Diagnosis Code: &lt;hosp_dx_code&gt; ICD-10
+        Primary Diagnosis Code Description: &lt;hosp_dx_desc&gt;
 
-        **ER Visit:** <er_start_date> - <er_end_date>
-        **Provider:** <er_provider>
-        Primary Diagnosis Code: <er_dx_code_1> ICD-10
-        Primary Diagnosis Code Description: <er_dx_desc_1>
+        ER Visit: &lt;er_start_date&gt; - &lt;er_end_date&gt;
+        Provider: &lt;er_provider&gt;
+        Primary Diagnosis Code: &lt;er_dx_code&gt; ICD-10
+        Primary Diagnosis Code Description: &lt;er_dx_desc&gt;
 
 Caution : Please verify this information before use.
-</TEMPLATE>
-</OUTPUT_FORMAT>
+</TEMPLATE> </OUTPUT_FORMAT> ```
