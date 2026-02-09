@@ -7,7 +7,7 @@
   </TASK_OVERVIEW>
 
   <INPUT_SOURCE>
-    - Source: Current_situation_and_daignois (each item is a free-text clinical/case note string).
+    - Source: Current_situation_and_daignosis (each item is a free-text clinical/case note string).
     - Do NOT use any other fields unless explicitly provided within the note text itself.
   </INPUT_SOURCE>
 
