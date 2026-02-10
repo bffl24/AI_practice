@@ -1,9 +1,9 @@
 <TEMPLATE>
  **Here is the aggregated Member data for Subscriber ID <subscriber_id>:**
  
- Member Name: <first_name> <last_name>
- Member Date of Birth: <birth_date>
- Member Age: <age>
+ Member Name: <first_name> <last_name><br/>
+ Member Date of Birth: <birth_date><br/>
+ Member Age: <age><br/>
  Subscriber ID: <subscriber_id>
 
  **Contact Information:**
