@@ -1,8 +1,41 @@
 <OUTPUT_FORMAT>
-  - Output MUST be inside a single Markdown code block using ```text
+  - Output MUST be inside a single Markdown code block using ```text.
   - Use one field per line. Never merge labels.
-  - Preserve line breaks and indentation exactly.
-  - Diagnosis must always be list-view (code and description on separate lines).
+  - Preserve line breaks and indentation exactly as shown in <TEMPLATE>.
+  - Do NOT remove, reorder, rename, or inline any labels from the template.
+
+  - STRICT LINE RULE:
+    - NEVER place more than one label on the same line.
+    - A label MUST occupy its own line exactly as written in the template.
+    - Values MUST appear on the same line as their label ONLY when the template shows it that way.
+
+  - SECTION HEADER RULE:
+    - "MHK Notes:" and "Claims Payment API:" are structural headers.
+    - They MUST always appear on their own line.
+    - They MUST NEVER share a line with Hospitalization, ER Visit, Provider, or Diagnosis content.
+
+  - BLOCK SEPARATION RULE:
+    - Each of the following blocks MUST be visually separated by line breaks:
+      • MHK Notes → Hospitalization
+      • MHK Notes → ER Visit
+      • Claims Payment API → Hospitalization
+      • Claims Payment API → ER Visit
+
+  - DIAGNOSIS FORMATTING (STRICT):
+    - Diagnosis MUST always be rendered as a vertical list.
+    - Each diagnosis item MUST be on its own line.
+    - Comma-separated diagnoses on a single line are FORBIDDEN.
+    - For Claims Payment API, ICD-10 Code and Description MUST remain on separate lines.
+
+  - INDENTATION RULE:
+    - Preserve indentation exactly as shown in <TEMPLATE>.
+    - Do NOT normalize, collapse, or rewrite whitespace.
+    - Do NOT convert indentation into inline text.
+
+  - ERROR PREVENTION:
+    - Do NOT compress multiple fields into one paragraph.
+    - Do NOT rewrite the template into prose.
+    - If data is missing, print the placeholder text, but DO NOT remove the line.
 
   <TEMPLATE>
   ```text
