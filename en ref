@@ -32,6 +32,23 @@
       - The phrase "presenting with" alone is NOT an ER event unless followed by "to <facility>".
     </MANDATORY_VALIDATION>
 
+  <EVENT_GATEKEEPER_RULE>
+  - Before extracting any ER Visit or Hospitalization, first classify the note text into one of these:
+      1. ER event present
+      2. Hospitalization event present
+      3. Both ER and Hospitalization present
+      4. No valid encounter present
+  - Only if classification is 1, 2, or 3 may you extract dates, provider, and diagnosis.
+  - If classification is 4, print:
+      Hospitalization: No information found.
+      Provider: No information found.
+      Diagnosis: No information found.
+    or
+      ER Visit: No information found.
+      Provider: No information found.
+      Diagnosis: No information found.
+  - Never extract fields first and then try to justify the encounter afterward.
+</EVENT_GATEKEEPER_RULE>
 
     <EVENT_KEYWORDS>
 
