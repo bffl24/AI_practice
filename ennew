@@ -53,9 +53,9 @@
 
     <CARE_MANAGEMENT_NOTE_FILTER>
       Notes containing administrative or care-management language MUST NOT generate encounters
-      unless explicit admission language AND an explicit encounter date are present.
+      unless explicit admission/ER language AND explicit encounter dates are present.
 
-      Common phrases that indicate non-encounter documentation:
+      Common phrases indicating non-encounter documentation:
 
         CCR
         per portal
@@ -72,8 +72,6 @@
         scheduled to
         documentation received
         fax received
-
-      These phrases alone DO NOT represent ER visits or hospital admissions.
     </CARE_MANAGEMENT_NOTE_FILTER>
 
 
@@ -83,13 +81,11 @@
 
       A valid encounter exists ONLY if ALL conditions are satisfied:
 
-        1. A valid encounter keyword is present
-        AND
-        2. Explicit admission/ER language is present
-        AND
-        3. An explicit encounter start date appears in the note text
+        1. Valid encounter keyword present
+        2. Explicit admission/ER language present
+        3. Explicit encounter start date present in note text
 
-      If any condition is missing, discard the encounter.
+      If any condition is missing → discard encounter.
 
       The abbreviation "IP" alone does NOT confirm hospitalization.
 
@@ -98,7 +94,7 @@
 
     <DATE_RULES>
 
-      Extract encounter dates ONLY from the note text.
+      Extract encounter dates ONLY from note text.
 
       Never use noteDate as:
 
@@ -108,17 +104,32 @@
         encounter start date
         encounter end date
 
-      If start date is not explicitly present in note text:
+      If encounter start date is not explicitly present:
         discard the encounter.
 
-      If a single encounter date exists:
-        start date = that date
-        end date = that date
+      Normalize extracted dates to YYYY-MM-DD.
 
-      If admission/start date exists but discharge date is not stated:
-        end date = start date
+      If start date AND discharge date both exist:
+        use the range.
 
-      Normalize all extracted dates to YYYY-MM-DD.
+      If start date exists and note text clearly states the patient is still inpatient,
+      still admitted, or currently hospitalized:
+
+        start date = extracted admission date
+        end date = No information found.
+
+      Examples of ongoing inpatient indicators:
+
+        still inpatient
+        remains admitted
+        currently admitted
+        currently inpatient
+        remains hospitalized
+        continues to be inpatient
+
+      If start date exists but discharge date is not stated AND no ongoing admission language exists:
+
+        end date = start date.
 
     </DATE_RULES>
 
@@ -133,32 +144,32 @@
         provider
         diagnosis
 
-      Provider extraction rules:
+      Provider extraction:
 
-        Extract facility following:
-          "to"
-          "at"
+        Extract facility following phrases:
+
           "admitted to"
           "presented to"
+          "at"
+          "to"
 
         If provider not stated:
           Provider = Unknown
 
-      Diagnosis rules:
+      Diagnosis extraction:
 
-        Extract diagnosis tied to the encounter.
+        Prefer confirmed diagnoses near:
 
-        Prefer phrases near:
           diagnosed with
           dx
           assessment
           impression
           primary diagnosis
 
-        If only symptoms are present:
-          use presenting complaint.
+        If only symptoms exist:
+          extract presenting complaint.
 
-        Limit diagnosis to 1–3 items.
+        Limit to 1–3 diagnoses.
 
     </STEP_2_CREATE_CANDIDATES>
 
@@ -207,9 +218,10 @@
       Reason:
         administrative/care coordination note
         no explicit admission language
-        no encounter date
+        no explicit encounter date
 
-      Expected output:
+      Expected result:
+
         Hospitalization: No information found.
 
     </NEGATIVE_EXAMPLE_RULE>
@@ -217,12 +229,12 @@
 
     <POSITIVE_EXAMPLE_RULE>
 
-      Example note that SHOULD produce a hospitalization:
+      Example note that SHOULD produce hospitalization:
 
         "Member admitted to McLean Hospital on 2026-02-21 for severe depression.
          Discharged on 2026-02-25."
 
-      Expected output:
+      Expected result:
 
         Hospitalization: 2026-02-21 - 2026-02-25
         Provider: McLean Hospital
@@ -249,7 +261,8 @@
 
       Select the most recent claim using service start date.
 
-      If start date missing, use end date for comparison.
+      If start date missing:
+        use end date for comparison.
 
       Normalize dates to YYYY-MM-DD.
 
@@ -260,7 +273,7 @@
 
       Extract ICD-10 Primary Diagnosis Code and Description.
 
-      Do NOT combine diagnoses across claims.
+      Do NOT combine multiple claims.
 
       Do NOT mix Claims data with MHK Notes data.
 
@@ -275,7 +288,7 @@
 
       MHK Notes:
 
-        Hospitalization: <YYYY-MM-DD> - <YYYY-MM-DD> OR <No information found.>
+        Hospitalization: <YYYY-MM-DD> - <YYYY-MM-DD OR No information found.> OR <No information found.>
         Provider: <provider OR No information found.>
         Diagnosis:
           - <diagnosis OR No information found.>
@@ -284,7 +297,7 @@
 
       MHK Notes:
 
-        ER Visit: <YYYY-MM-DD> - <YYYY-MM-DD> OR <No information found.>
+        ER Visit: <YYYY-MM-DD> - <YYYY-MM-DD OR No information found.> OR <No information found.>
         Provider: <provider OR No information found.>
         Diagnosis:
           - <diagnosis OR No information found.>
