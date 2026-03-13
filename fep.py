@@ -90,47 +90,46 @@ class HMMCallPrepOutput(BaseModel):
 # - final resolved member data
 # ============================================================
 
-async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
-    logger.info(f"--- Tool: hmm_get_data called with topic: {topic} ---")
+async def hmm_get_data(topic: Any, tool_context: ToolContext) -> Dict[str, Any]:
+    """
+    Tool to gather HMM patient data.
+    """
+    logger.info(f"---Tool : hmm_get_data called with topic: {topic}---")
 
-    patient_id = tool_context.state.get("patient_id")
-    patient_name = tool_context.state.get("patient_name")
+    extractor_result, flow_status = topic_extractor(topic)
+    logger.info(f"extractor_result: {extractor_result}, flow_status: {flow_status}")
 
-    if not patient_id and not patient_name:
-        result = {
-            "status": "error",
-            "resolution_status": "input_missing",
-            "member_selection_required": False,
-            "error_message": "Subscriber ID or patient name is missing.",
-            "data": {},
-        }
-        tool_context.state["raw_hmm_call_result"] = result
-        return result
+    if not extractor_result.is_valid:
+        return {"status": "error", "topic": topic}
 
     try:
-        async with HealthcareApiClient() as client:
-            aggregator = PatientDataAggregator(client)
+        async with PatientOrchestrator() as orchestrator:
+            with TimerContext(
+                request_id=f"HMM-CALL-PREP-Agent-{random.getrandbits(128)}"
+            ):
+                aggregator = PatientDataAggregator(orchestrator)
+                member_data = await aggregator.get_patient_aggregated_data(
+                    subscriber_id=extractor_result.subscriber_id,
+                    fep_id=extractor_result.fep_id,
+                    member_id=extractor_result.member_id,
+                    first_name=extractor_result.first_name,
+                    last_name=extractor_result.last_name,
+                    date_of_birth=extractor_result.date_of_birth,
+                    flow_status=flow_status,
+                )
 
-            # IMPORTANT:
-            # This method is assumed to already handle:
-            # - FEP detection
-            # - member list response
-            # - parsing of user's FEP_CHOICE reply
-            # - final resolved fetch
-            all_patient_data = await aggregator.get_all_patient_data(
-                patient_id=patient_id,
-                patient_name=patient_name,
-            )
+        if member_data:
+            logger.info(f"Member Data: {json.dumps(member_data, indent=2)}")
 
-        # ------------------------------------------------
-        # CASE 1: tool/backend says member list needs selection
-        # Adjust these keys to your actual payload
-        # ------------------------------------------------
+        # ----------------------------------------------------------
+        # NEW: detect FEP member-list response
+        # ----------------------------------------------------------
         member_list = (
-            all_patient_data.get("fep_member_list")
-            or all_patient_data.get("member_list")
-            or all_patient_data.get("memberSelectionList")
-        )
+            member_data.get("fep_member_list")
+            or member_data.get("member_list")
+            or member_data.get("memberSelectionList")
+            or member_data.get("members")
+        ) if isinstance(member_data, dict) else None
 
         if member_list:
             member_candidates = []
@@ -154,61 +153,36 @@ async def hmm_get_data(topic: str, tool_context: ToolContext) -> Dict[str, Any]:
                     }
                 )
 
-            result = {
+            return {
                 "status": "success",
                 "resolution_status": "member_selection_required",
                 "member_selection_required": True,
-                "subscriber_id": patient_id,
+                "subscriber_id": extractor_result.subscriber_id or extractor_result.fep_id,
                 "member_candidates": member_candidates,
+                "topic": topic,
                 "data": {},
             }
-            tool_context.state["raw_hmm_call_result"] = result
-            return result
 
-        # ------------------------------------------------
-        # CASE 2: resolved member payload
-        # ------------------------------------------------
-        demographics = all_patient_data.get("demographics", {})
-        medications = all_patient_data.get("medications", {})
-        visits = all_patient_data.get("visits", {})
-        status = all_patient_data.get("status", {})
-        mhk_notes = all_patient_data.get("current_situation_and_diagnosis", [])
-
-        topic_map = {
-            "member": demographics,
-            "medications": medications,
-            "encounters": {
-                "claims": {
-                    "hospitalization": visits.get("hospitalization"),
-                    "emergency": visits.get("emergency"),
-                },
-                "mhk_notes": mhk_notes,
-            },
-            "status": status,
-        }
-
-        result = {
+        # ----------------------------------------------------------
+        # NEW: resolved-member response
+        # ----------------------------------------------------------
+        return {
             "status": "success",
             "resolution_status": "member_resolved",
             "member_selection_required": False,
-            "subscriber_id": demographics.get("subscriberId") or patient_id,
-            "data": topic_map,
+            "topic": topic,
+            "data": member_data,
         }
-        tool_context.state["raw_hmm_call_result"] = result
-        return result
 
     except Exception as e:
-        logger.exception("Error during HMM fetch flow")
-        result = {
+        logger.exception(
+            "Call Prep Agent: Error fetching data from PatientDataAggregator"
+        )
+        return {
             "status": "error",
-            "resolution_status": "fetch_failed",
-            "member_selection_required": False,
-            "error_message": f"Failed to retrieve data: {str(e)}",
-            "data": {},
+            "data": f"Failed to retrieve data: {str(e)}",
+            "topic": topic,
         }
-        tool_context.state["raw_hmm_call_result"] = result
-        return result
-
 
 # ============================================================
 # AGENT 1: FETCH / ORCHESTRATION
