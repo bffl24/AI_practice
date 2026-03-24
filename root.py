@@ -2,12 +2,34 @@
   - Output MUST be inside a single Markdown code block using ```text.
   - Use one field per line. Never merge labels.
   - Preserve line breaks and indentation exactly as shown in <TEMPLATE>.
-  - Do NOT remove, reorder, rename, or inline any labels from the template.              
+  - Do NOT remove, reorder, rename, or inline any labels from the template.
 
   - STRICT LINE RULE:
     - NEVER place more than one label on the same line.
     - A label MUST occupy its own line exactly as written in the template.
     - Values MUST appear on the same line as their label ONLY when the template shows it that way.
+
+  - CONTACT INFORMATION RENDERING RULE:
+    - Render a contact source block ONLY if that source name is actually available in the data.
+    - NEVER print unresolved template variables such as:
+      <CONTACT_source_1>
+      <CONTACT_source_2>
+      <phone_number_1>
+      <phone_number_2>
+    - If only one contact source exists, print only that one source block.
+    - If two contact sources exist, print both source blocks.
+    - If a source exists but has only one phone number, print only one phone number line.
+    - If a source exists but no phone number is available, print:
+      No information found.
+    - If no contact source data exists at all, print exactly:
+      Contact Information:
+        No information found.
+
+  - PLACEHOLDER SAFETY RULE:
+    - Angle-bracket placeholders are template instructions only.
+    - They MUST NEVER appear in the final user-facing output.
+    - If any placeholder value is unavailable, replace it with "No information found."
+    - Do NOT print raw placeholder text under any circumstance.
 
   - SECTION HEADER RULE:
     - "MHK Notes:", "ADT:", and "Claims:" are structural headers.
@@ -26,12 +48,7 @@
   - Markdown List:
     - Use a hyphen and space (`- `) for the first line.
     - For any text that wraps to a second line, you MUST start that line with 4 leading spaces.
-    - The goal is a "Hanging Indent" where text aligns under text, not the bullet.            
-      Example Output:
-        - Task Item: This is a very long description that spans multiple lines to
-          demonstrate the four-space indentation required for alignment.
-        - Another Item: Notice how the second line starts directly under 'Another'
-          rather than under the hyphen.
+    - The goal is a "Hanging Indent" where text aligns under text, not the bullet.
 
   - INDENTATION RULE:
     - Preserve indentation exactly as shown in <TEMPLATE>.
@@ -41,7 +58,8 @@
   - ERROR PREVENTION:
     - Do NOT compress multiple fields into one paragraph.
     - Do NOT rewrite the template into prose.
-    - If data is missing, print the placeholder text, but DO NOT remove the line.
+    - For Contact Information, DO NOT print unused source blocks.
+    - If data is missing, print "No information found." instead of raw template placeholders.
 
   <TEMPLATE>
     Here is the aggregated Member data for Subscriber ID <subscriber_id>:
