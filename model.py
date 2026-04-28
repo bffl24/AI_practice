@@ -1,40 +1,30 @@
-# ==========================================
-# MEDICATION MODELS — FIXED
-# ==========================================
+class HMMCallPrepOutput(BaseModel):
+    model_config = ConfigDict(extra="ignore")
 
-class MHKMedicationItem(BaseModel):
-    """Matches the MHK pharmacy raw data keys exactly."""
-    medication: Optional[str] = None       # ← use "medication", not "drug_name"
-    dosage: Optional[str] = None
-    frequency: Optional[str] = None
-    routeOfAdmin: Optional[str] = None
+    type: Literal["HMMCallPrepOutputField"] = "HMMCallPrepOutputField"
 
-
-class CVSMedicationItem(BaseModel):
-    """CVS data arrives as raw strings — parse them before populating."""
-    drug_name: Optional[str] = None
-    rx_direction: Optional[str] = None
-    # Remove `source` unless you're adding it manually downstream
-
-    @classmethod
-    def from_raw_string(cls, raw: str) -> "CVSMedicationItem":
-        """
-        Parses: 'TORSEMIDE 20MG TAB, rxDirection: None'
-        into structured fields.
-        """
-        parts = raw.split(", rxDirection:")
-        drug = parts[0].strip() if parts else None
-        direction = parts[1].strip() if len(parts) > 1 else None
-        return cls(
-            drug_name=drug,
-            rx_direction=None if direction == "None" else direction,
+    mhkPharmacy: List[MHKMedicationItem] = Field(
+        default_factory=list,
+        description=(
+            "Medications from MHK pharmacy source. "
+            "Each item has medication name, dosage, frequency, and routeOfAdmin. "
+            "Extract from the mhkPharmacy array in the input data."
         )
-
-
-class MedicalPharmacyItem(BaseModel):
-    """Meddrug data is a flat string list — one item per entry."""
-    meddrug: Optional[str] = None
-
-    @classmethod
-    def from_raw_string(cls, raw: str) -> "MedicalPharmacyItem":
-        return cls(meddrug=raw.strip())
+    )
+    cvsPharmacy: List[CVSMedicationItem] = Field(
+        default_factory=list,
+        description=(
+            "Medications from CVS pharmacy. Input is a flat string like "
+            "'TORSEMIDE 20MG TAB, rxDirection: None'. "
+            "Parse drug_name as everything before the comma, "
+            "rx_direction as the value after 'rxDirection:'. "
+            "If rx_direction is the string 'None', set it to null."
+        )
+    )
+    medPharmacy: List[MedicalPharmacyItem] = Field(
+        default_factory=list,
+        description=(
+            "Medical/injection drugs from the meddrug list. "
+            "Each string becomes one MedicalPharmacyItem with the full string as meddrug."
+        )
+    )
